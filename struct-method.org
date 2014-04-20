@@ -245,7 +245,7 @@
    #+name: spec-defstruct-import
    #+begin_src javascript
      var should = require("should");
-     var defstruct = require("../src/struct.js").defstruct;
+     var defstruct = require("../src/struct").defstruct;
    #+end_src
 
    Now let's create our tests. We will use a simple structure for this
@@ -270,7 +270,7 @@
                  name: 2,
                  age: 2
              });
-         }).should.throw("Wrong type at initialization");
+         }).should.throw(/Wrong type/);
      });
    #+end_src
 
@@ -313,13 +313,13 @@
      it("Should throw an error when setting a property with a wrong type", function () {
          (function () {
              john.age = "blue";
-         }).should.throw("Wrong type");
+         }).should.throw(/Wrong type/);
      });
    #+end_src
 
    The struct definition testing is grouped in a unique code :
 
-   #+begin_src javascript :tangle no :noweb yes
+   #+begin_src javascript :tangle test/struct.js :noweb yes
      /* jshint node: true */
      "use strict";
      <<spec-defstruct-import>>
@@ -418,3 +418,185 @@
      <<impl-core-has-type>>
      <<impl-core-base-type-predicates>>
    #+end_src
+
+** Structure definition
+
+   From the outside, a structure is an object containing a constructor
+   that creates objects with a pre-defined structure, and type
+   constraints.
+
+   To create object with pre-define structures, we will make use of
+   prototypal inheritance. getters and setters will allow us to
+   override the property assignment system to add constraints to it.
+
+*** Structure instance creation
+
+    We will try here to create by hand an object with a pre-defined
+    structure, and with type constraints.
+
+    We want to do a =Person= structure, with two properties :
+
+    - =name= of type =String=
+    - =age= of type =Number=
+
+    Here is the prototype definition :
+
+    #+begin_src javascript
+      var personProto = {
+          _name: "",
+          _age: 0,
+
+          get name () { return this._name; },
+          set name (name) {
+              if (!hasType(name, String)) {
+                  throw new Error("Wrong type for name : got " + name + " but expected " +
+                                  String);
+              }
+
+              this._name = name;
+          }
+
+          get age () { return this._age; },
+          set age (age) {
+              if (!hasType(age, Number)) {
+                  throw new Error("Wrong type for age : got " + age + " but expected " +
+                                  Number);
+              }
+              this._age = age;
+          }
+      };
+    #+end_src
+
+    Now we can create instance of =Person= using this prototype :
+
+    #+begin_src javascript
+      var john = Object.create(personProto);
+
+      john.name = "John";
+      john.age = "42"; // Error
+    #+end_src
+
+    This is what will be done by =defstruct=.
+
+*** Properties creation
+
+    Firstly, we define a function to insert a property to an object. A
+    structure property is implemented as a private property that
+    handles the current value, and a getter / setter property that
+    handle that interaction from the outside with the property.
+
+    #+name: impl-struct-define-property
+    #+begin_src javascript
+      function defineStructProperty(prototype, name, descriptor) {
+          var privateName = "_" + name + ((Math.random() * 100) % 100);
+
+          Object.defineProperty(prototype, privateName, {
+              value: null,
+              enumerable: false,
+              writable: true
+          });
+
+          Object.defineProperty(prototype, name, {
+              enumerable: true,
+              get: function () { return this[privateName]; },
+              set: function (newValue) {
+                  if (!hasType(newValue, descriptor.type)) {
+                      throw new Error("Wrong type for " + name
+                                      + ": got " + newValue
+                                      + " but expected " + descriptor.type);
+                  }
+                  this[privateName] = newValue;
+              }
+          });
+      }
+    #+end_src
+
+
+
+*** Structure initialisation
+
+    The structure initialisation is simple. It is simply creating an
+    object based on a prototype, and populating its values according
+    to the given initialisation parameters.
+
+    #+name: impl-struct-create-instance
+    #+begin_src javascript
+      function createStructInstance (prototype, baseValues) {
+          var instance = Object.create(prototype);
+
+          for (var key in baseValues) {
+              if (baseValues.hasOwnProperty(key)) {
+                  instance[key] = baseValues[key];
+              }
+          }
+
+          return instance;
+      }
+    #+end_src
+
+
+*** Structure definition
+
+    Finally, the code of =defstruct= simply creates a new prototype
+    object using =defineStructProperty=, and creates a method that
+    makes use of the prototype to instanciate the structure.
+
+    #+name: impl-struct-defstruct
+    #+begin_src javascript
+      function defstruct(properties) {
+          var prototype = Object.create(Object);
+
+          for (var name in properties) {
+              if (properties.hasOwnProperty(name)) {
+                  defineStructProperty(prototype, name, properties[name]);
+              }
+          }
+
+          Object.seal(prototype);
+
+          return {
+              get prototype () { return prototype; },
+              create: function (baseValues) {
+                  return createStructInstance(prototype, baseValues);
+              }
+          };
+      }
+      exports.defstruct = defstruct;
+    #+end_src
+
+*** Type predicate
+
+    In order to make =hasType= work with structures, it is necesary to
+    create a new type predicate. This one simply have to check, when
+    the type is a struct, that the struct's prototype is in the
+    prototype chain of the value.
+
+    #+name: impl-struct-type-predicate
+    #+begin_src javascript
+      function isStruct(struct) {
+          return typeof struct.prototype === "object" &&
+              typeof struct.create === "function";
+      }
+
+      defineTypePredicate(function (val, type) {
+          return isStruct(type) && type.prototype.isPrototypeOf(val);
+      });
+    #+end_src
+
+*** Unification
+
+    The code is grouped in a single file =struct.js=.
+
+    #+begin_src javascript :tangle src/struct.js :noweb yes
+      /* jshint node: true */
+      "use strict";
+
+      var core = require("./core");
+      var hasType = core.hasType;
+      var defineTypePredicate = core.defineTypePredicate;
+
+      <<impl-struct-define-property>>
+      <<impl-struct-create-instance>>
+      <<impl-struct-defstruct>>
+      <<impl-struct-type-predicate>>
+    #+end_src
