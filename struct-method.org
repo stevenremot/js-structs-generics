@@ -171,12 +171,15 @@
                  [45, Object, false],
                  [45, String, false],
                  [[1, 2], Array, true],
-                 [[1, 2], Object, false],
-                 [{a: 3}, Object, true]
+                 [[1, 2], Object, true],
+                 [[1, 2], Number, false],
+                 [{a: 3}, Object, true],
+                 [{a: 3}, Array, false]
              ];
 
              cases.forEach(function (testCase) {
-                 core.hasType(testCase[0], testCase[1]).should.equal(testCase[2]);
+                 [testCase[0], testCase[1],
+                  core.hasType(testCase[0], testCase[1])].should.eql(testCase);
              });
          });
 
@@ -216,7 +219,7 @@
 
              core.undefineTypePredicate(predicate);
 
-             core.hasType("bla", "bla").sould.be.false;
+             core.hasType("bla", "bla").should.be.false;
          });
      });
    #+end_src
@@ -231,7 +234,7 @@
 
      describe("Core", function () {
          <<spec-core-has-type>>
-         <<spec-core-type-predicates
+         <<spec-core-type-predicates>>
      });
    #+end_src
 
@@ -316,7 +319,7 @@
 
    The struct definition testing is grouped in a unique code :
 
-   #+begin_src javascript :tangle test/struct.js :noweb yes
+   #+begin_src javascript :tangle no :noweb yes
      /* jshint node: true */
      "use strict";
      <<spec-defstruct-import>>
@@ -357,19 +360,21 @@
 
    #+name: impl-core-define-type-predicate
    #+begin_src javascript
-     exports.defineTypePredicate = function (typePredicate) {
+     function defineTypePredicate (typePredicate) {
          typePredicates.push(typePredicate);
          return typePredicate;
      };
+     exports.defineTypePredicate = defineTypePredicate;
 
-     exports.undefineTypePredicate = function (typePredicate) {
+     function undefineTypePredicate (typePredicate) {
          typePredicates.splice(typePredicates.indexOf(typePredicate), 1);
      };
+     exports.undefineTypePredicate = undefineTypePredicate;
    #+end_src
 
    #+name: impl-core-has-type
    #+begin_src javascript
-     exports.hasType = function (val, type) {
+     function hasType (val, type) {
          for (var i = 0; i < typePredicates.length; i++) {
              if (typePredicates[i](val, type)) {
                  return true;
@@ -378,14 +383,38 @@
 
          return false;
      };
+     exports.hasType = hasType;
+   #+end_src
+
+   Next, we define some basic type predicates.
+
+   #+name: impl-core-base-type-predicates
+   #+begin_src javascript
+     defineTypePredicate(function (val, type) {
+         return typeof type === "function" && val instanceof type;
+     });
+
+     defineTypePredicate(function (val, type) {
+         return type.isPrototypeOf(val);
+     });
+
+     defineTypePredicate(function (val, type) {
+         return typeof val === "number" && type === Number;
+     });
+
+     defineTypePredicate(function (val, type) {
+         return typeof val === "string" && type === String;
+     });
    #+end_src
 
    These utilities are grouped in a single =core.js= file.
 
    #+begin_src javascript :tangle src/core.js :noweb yes
      /* jshint node: true */
+     "use strict";
 
      <<impl-core-type-predicate-variable>>
      <<impl-core-define-type-predicate>>
      <<impl-core-has-type>>
+     <<impl-core-base-type-predicates>>
    #+end_src
