@@ -1,0 +1,7 @@
+{
+  "name": "struct.js",
+  "version": "0.0.1",
+  "devDependencies": {
+    "should": "~3.3.1"
+  }
+}

@@ -1,0 +1,391 @@
+#+title: Javascript structure and multi-method system
+
+* Introduction
+
+  This code is a tiny experiment for creation of fixed and typed
+  structure in javascript, with a method dispatch system based on the
+  type of the arguments. It focuses on semantic, and doesn't really
+  care about syntax. This could be improved later using [[https://github.com/mozilla/sweet.js/][sweet.js]].
+
+** Setup
+
+*** Org-babel evalutation
+
+    In order to run some commands, you need to run this code :
+
+    #+begin_src emacs-lisp
+      (org-babel-do-load-languages
+       'org-babel-load-languages
+       '((sh . t)))
+    #+end_src
+
+
+*** Unit tests
+
+    In order to run unit tests, you will require mocha :
+
+    #+begin_src sh
+      npm install -g mocha
+    #+end_src
+
+* Objectives
+
+  In several lisp dialects, you can see a lot of powerful structures
+  created using only Lisp, and not relying originally on some Lisp
+  implementation, but only on what offer the language. One of the best
+  example is CLOS, the Common Lisp Object System. It creates a
+  powerful object system to do object-oriented programming, even
+  enforcing some type constraints if necesary, on the top of a dynamic
+  language with no native constructs for object-oriented programming.
+
+  Javascript has a lot of semantical power, but the current trend is
+  using it to create new languages that compiles ot javascript. Here
+  is an attempt to create a structure and method dispatch system using
+  javascript semantic, expected to be used with Javascript.
+
+** Structure definition
+
+   The first step is to define a structure semantic that allows the
+   creation of objects with a static and well-defined
+   structure. Basically, a structure defines :
+
+   - The attributes of an object
+   - The type of each attribute
+
+   Here is an example of such a structure definition :
+
+   #+begin_src javascript :tangle no
+     var Person = defstruct({
+         name: {type: String},
+         age: {type: Number}
+     });
+   #+end_src
+
+   Then, an object using this structure could be defined like this :
+
+   #+begin_src javascript
+     var john = Person.create({
+         name: "John",
+         age: 35
+     });
+   #+end_src
+
+   Its method can be accessed using the classic notation :
+
+   #+begin_src javascript
+     john.name; // "John"
+     john.age = 36; // Effectively set
+   #+end_src
+
+   However, the type constraints are enforced :
+
+   #+begin_src javascript
+     var eddy = Person.create({
+         name: "Eddy",
+         age: "I don't know :-)"
+     }); // Throws a type error
+
+     john.age = null; // Throws another type error
+
+     john.weight = 96; // Throws an error because this property does not exist
+   #+end_src
+
+** Method dispatch
+
+   In addition with the structure definition comes a system inspired
+   of Common Lisp generic functions to create a function with
+   different implementation regarding the type of its arguments. It is
+   a bit like function overloading in statically typed languages.
+
+   A generic function should be define like this :
+
+   #+begin_src javascript
+     var getName = defgeneric();
+   #+end_src
+
+   Then, its implementations can be specified using =defmethod= :
+
+   #+begin_src javascript
+     getName.defmethod([Person], function (person) {
+         return person.name;
+     });
+
+     getName.defmethod([String], function (s) {
+         return s;
+     });
+   #+end_src
+
+   =getName= can now be called either on a =Person= or a =String= :
+
+   #+begin_src javascript
+     getName(john); // "John"
+     getName("Bobby"); // "Bobby"
+   #+end_src
+
+** TODO Behaviour overloading
+
+   After these base functionnalities have been implemented, the next
+   step is to create an interface so that the exact behaviour of
+   =defstruct=, =defgeneric= and =defmethod= can be tuned to fit to
+   the user's need. For example, new constraints could be added to a
+   struct and its properties, or new way of overriding a generic
+   function could be defined.
+
+* Specification
+
+  This forms the contract the API muspt respect. This is defined in
+  term of unit tests.
+
+  You can run this tests using this command :
+
+  #+begin_src sh
+    mocha
+  #+end_src
+
+** Core functions
+
+   Some functions will be used in many parts of the code. They are
+   defined here.
+
+   Fisrtly we have to import the core module :
+
+   #+name: spec-core-import
+   #+begin_src javascript
+     var should = require("should");
+     var core = require("../src/core");
+   #+end_src
+
+   The first is =hasType=, which returns =true= if a
+   value =val= has the type =type=. Depending on the type of =val=,
+   the kind of check may differ, and all of this must be handled by
+   =hasType=.
+
+   #+name: spec-core-has-type
+   #+begin_src javascript
+     describe("hasType", function () {
+         it("Should guess type of base values", function () {
+             var cases = [
+                 ["abc", String, true],
+                 ["abc", Number, false],
+                 [45, Number, true],
+                 [45, Object, false],
+                 [45, String, false],
+                 [[1, 2], Array, true],
+                 [[1, 2], Object, false],
+                 [{a: 3}, Object, true]
+             ];
+
+             cases.forEach(function (testCase) {
+                 core.hasType(testCase[0], testCase[1]).should.equal(testCase[2]);
+             });
+         });
+
+         it("Should guess type with prototype objects", function () {
+             var BaseObject = {a: 3};
+             var baseInstance = Object.create(BaseObject);
+
+             core.hasType(baseInstance, BaseObject).should.be.true;
+         });
+
+         it("Should guess type with constructors", function () {
+             var Constructor = function () { this.a = 3; };
+             var baseInstance = new Constructor();
+
+             core.hasType(baseInstance, Constructor).should.be.true;
+         });
+     });
+   #+end_src
+
+   The base cases of =hasType= can be extended to allow the creation
+   of new type predicates. This functionnality must be used carefully,
+   because its effects are globals.
+
+   Using the function =defineTypePredicate=, one can create a new
+   condition that will make =hasType= return =true=. This predicate
+   can be removed later if necesary using =undefineTypePredicate=.
+
+   #+name: spec-core-type-predicates
+   #+begin_src javascript
+     describe("defineTypePredicate", function () {
+         it("Should impact hasType when a predicate is defined", function () {
+             var predicate = core.defineTypePredicate(function (value, type) {
+                 return value === type;
+             });
+
+             core.hasType("bla", "bla").should.be.true;
+
+             core.undefineTypePredicate(predicate);
+
+             core.hasType("bla", "bla").sould.be.false;
+         });
+     });
+   #+end_src
+
+   Core tests are defined in one single place :
+
+   #+begin_src javascript :tangle test/core.js :noweb yes
+     /*jshint node: true */
+     "use strict";
+
+     <<spec-core-import>>
+
+     describe("Core", function () {
+         <<spec-core-has-type>>
+         <<spec-core-type-predicates
+     });
+   #+end_src
+
+** Structure definition
+
+   We first have to import struct definition code and =should= module :
+
+   #+name: spec-defstruct-import
+   #+begin_src javascript
+     var should = require("should");
+     var defstruct = require("../src/struct.js").defstruct;
+   #+end_src
+
+   Now let's create our tests. We will use a simple structure for this
+   sake.
+
+   #+name: spec-defstruct-struct-definition
+   #+begin_src javascript
+     var Person = defstruct({
+         name: {type: String},
+         age: {type: Number}
+     });
+   #+end_src
+
+   Firstly, let's check if initializing with the wrong type causes an
+   exception :
+
+   #+name: spec-defstruct-test1
+   #+begin_src javascript
+     it("Should throw an exception when initializers have the wrong type", function () {
+         (function () {
+             Person.create({
+                 name: 2,
+                 age: 2
+             });
+         }).should.throw("Wrong type at initialization");
+     });
+   #+end_src
+
+   Then, let's try to create a normal object.
+
+   #+name: spec-defstruct-object-creation
+   #+begin_src javascript
+     var john = Person.create({
+         name: "John",
+         age: 32
+     });
+   #+end_src
+
+   The second test ensure john porperties are readable :
+
+   #+name: spec-defstruct-test2
+   #+begin_src javascript
+     it("Should create readable properties and put initial values in it", function () {
+         john.name.should.equal("John");
+         john.age.should.equal(32);
+     });
+   #+end_src
+
+   The next test make sure that we can write properties :
+
+   #+name: spec-defstruct-test3
+   #+begin_src javascript
+     it("Should write in object's properties", function () {
+         john.age = 25;
+         john.age.should.equal(25);
+         john.age = 32;
+     });
+   #+end_src
+
+   However, trying to set a value that have a different type must
+   throw an error.
+
+   #+name: spec-defstruct-test4
+   #+begin_src javascript
+     it("Should throw an error when setting a property with a wrong type", function () {
+         (function () {
+             john.age = "blue";
+         }).should.throw("Wrong type");
+     });
+   #+end_src
+
+   The struct definition testing is grouped in a unique code :
+
+   #+begin_src javascript :tangle test/struct.js :noweb yes
+     /* jshint node: true */
+     "use strict";
+     <<spec-defstruct-import>>
+
+     describe("defstruct", function () {
+         <<spec-defstruct-struct-definition>>
+
+         <<spec-defstruct-test1>>
+         <<spec-defstruct-object-creation>>
+         <<spec-defstruct-test2>>
+         <<spec-defstruct-test3>>
+         <<spec-defstruct-test4>>
+     });
+   #+end_src
+
+** TODO Method dispatch
+
+* Implementation
+
+  Now that we know what we want to do, it is time to implement the
+  features.
+
+
+** Core
+
+   We start by implementing utilities for other modules.
+
+   Type predicates are the basis of the type semantic. They are
+   registered in a module-local variable.
+
+   #+name: impl-core-type-predicate-variable
+   #+begin_src javascript
+     var typePredicates = [];
+   #+end_src
+
+   These are defined and removed using =defineTypePredicate= and
+   =removeTypePredicate=.
+
+   #+name: impl-core-define-type-predicate
+   #+begin_src javascript
+     exports.defineTypePredicate = function (typePredicate) {
+         typePredicates.push(typePredicate);
+         return typePredicate;
+     };
+
+     exports.undefineTypePredicate = function (typePredicate) {
+         typePredicates.splice(typePredicates.indexOf(typePredicate), 1);
+     };
+   #+end_src
+
+   #+name: impl-core-has-type
+   #+begin_src javascript
+     exports.hasType = function (val, type) {
+         for (var i = 0; i < typePredicates.length; i++) {
+             if (typePredicates[i](val, type)) {
+                 return true;
+             }
+         }
+
+         return false;
+     };
+   #+end_src
+
+   These utilities are grouped in a single =core.js= file.
+
+   #+begin_src javascript :tangle src/core.js :noweb yes
+     /* jshint node: true */
+
+     <<impl-core-type-predicate-variable>>
+     <<impl-core-define-type-predicate>>
+     <<impl-core-has-type>>
+   #+end_src
