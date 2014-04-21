@@ -133,10 +133,10 @@
 
 * Specification
 
-  This forms the contract the API muspt respect. This is defined in
+  This forms the contract the API must respect. This is defined in
   term of unit tests.
 
-  You can run this tests using this command :
+  You can run this tests using mocha :
 
   #+begin_src sh :results output
     mocha
