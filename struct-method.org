@@ -138,7 +138,7 @@
 
   You can run this tests using this command :
 
-  #+begin_src sh
+  #+begin_src sh :results output
     mocha
   #+end_src
 
@@ -246,6 +246,7 @@
    #+begin_src javascript
      var should = require("should");
      var defstruct = require("../src/struct").defstruct;
+     var hasType = require("../src/core").hasType;
    #+end_src
 
    Now let's create our tests. We will use a simple structure for this
@@ -317,6 +318,15 @@
      });
    #+end_src
 
+   Finally, we can check our instance has the expected type =Person=.
+
+   #+name: spec-defstruct-test5
+   #+begin_src javascript
+     it("Should have struct type", function () {
+         hasType(john, Person).should.be.true;
+     });
+   #+end_src
+
    The struct definition testing is grouped in a unique code :
 
    #+begin_src javascript :tangle test/struct.js :noweb yes
@@ -332,6 +342,7 @@
          <<spec-defstruct-test2>>
          <<spec-defstruct-test3>>
          <<spec-defstruct-test4>>
+         <<spec-defstruct-test5>>
      });
    #+end_src
 
