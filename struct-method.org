@@ -372,15 +372,11 @@
          return a + b;
      });
 
-     add.defmethod([String, String], function (a, b) {
-         return parseInt(a, 10) + parseInt(b, 10);
+     add.defmethod([String, null], function (a, b) {
+         return add(b, parseInt(a, 10));
      });
 
-     add.defmethod([String, Number], function (a, b) {
-         return parseInt(a, 10) + b;
-     });
-
-     add.defmethod([Number, String], function (a, b) {
+     add.defmethod([Number, null], function (a, b) {
          return add(b, a);
      });
    #+end_src
