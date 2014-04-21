@@ -1,7 +1,21 @@
 {
-  "name": "struct.js",
-  "version": "0.0.1",
-  "devDependencies": {
-    "should": "~3.3.1"
-  }
+    "name": "structs-generics",
+    "version": "0.0.1",
+    "description": "An implementation of statically typed structures and generic functions",
+    "keywords": [
+        "struct",
+        "generic",
+        "function",
+        "static typing"
+    ],
+    "scripts": [
+        "tangle": "emacs -Q --batch --eval \"(progn (require 'ob-tangle)(org-babel-tangle-file \\\"struct-method.org\\\"))\""
+    ]
+    "devDependencies": {
+        "should": "~3.3.1",
+        "mocha": "~1.18.2"
+    },
+    "directories": {
+        "lib": "src"
+    }
 }
