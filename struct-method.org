@@ -346,7 +346,92 @@
      });
    #+end_src
 
-** TODO Method dispatch
+** Method dispatch
+
+   The method dispatch semantic is a new way for defining functions
+   that can have different implementations depending on the number of
+   arguments and their type.
+
+   Firstly, let's import the required modules.
+
+   #+name: spec-method-import
+   #+begin_src javascript
+     var should = require("should");
+     var defgeneric = require("../src/method").defgeneric;
+   #+end_src
+
+   We will work with a single generic function, with different
+   implementations. This function is a sum function that enforces the
+   type of its arguments to be a number.
+
+   #+name: spec-method-generic-definition
+   #+begin_src javascript
+     var add = defgeneric();
+
+     add.defmethod([Number, Number], function (a, b) {
+         return a + b;
+     });
+
+     add.defmethod([String, String], function (a, b) {
+         return parseInt(a, 10) + parseInt(b, 10);
+     });
+
+     add.defmethod([String, Number], function (a, b) {
+         return parseInt(a, 10) + b;
+     });
+
+     add.defmethod([Number, String], function (a, b) {
+         return add(b, a);
+     });
+   #+end_src
+
+   Then, we have to do a first test to check all implementations.
+
+   #+name: spec-method-test1
+   #+begin_src javascript
+     it("Should use the correct implementation", function () {
+         var cases = [
+             [1, 2, 3],
+             ["1", "2", 3],
+             ["1", 2, 3],
+             [1, "2", 3]
+         ];
+
+         cases.forEach(function (testCase) {
+             [testCase[0], testCase[1],
+              add(testCase[0], testCase[1])].should.eql(testCase);
+         });
+     });
+   #+end_src
+
+   We add another test to be sure an error is raised when no
+   implementation is available for the provided types.
+
+   #+name: spec-method-test2
+   #+begin_src javascript
+     it("Should raise an error when no implementation exists", function () {
+         (function () {
+             add(1, [2]);
+         }).should.throw(/No implementation/);
+     });
+   #+end_src
+
+   All the tests are defined in one single file =test/method.js=.
+
+   #+begin_src javascript :tangle test/method.js :noweb yes
+     /* jshint node: true */
+     "use strict";
+
+     <<spec-method-import>>
+
+     describe("method", function () {
+
+         <<spec-method-generic-definition>>
+
+         <<spec-method-test1>>
+         <<spec-method-test2>>
+     });
+   #+end_src
 
 * Implementation
 
@@ -610,4 +695,121 @@
       <<impl-struct-create-instance>>
       <<impl-struct-defstruct>>
       <<impl-struct-type-predicate>>
+    #+end_src
+** Method dispatch
+
+   Internally, a generic function is a javascript function that keeps
+   track of that different implementations defined, and that will,
+   when it is called, try to find an implementation which type
+   requirements fit the current arguments.
+
+   We have to define a predicate which tells if type requirements are
+   fulfilled for some arguments, and use it in our implementation.
+
+*** Implementations storage
+
+    An implementation is actually a simple association between a list
+    of types forming the type requirements, and a function that is the
+    implementation of the generic method for these types.
+
+    We will use a list of pairs =[types, implementation]= to represent
+    it. For example :
+
+    #+begin_src javascript
+      [
+          [[Number, Number], function (a, b) { return a + b; }],
+          [[String, String], function (a, b) { return parseInt(a, 10) + parseInt(b, 10); }]
+      ]
+    #+end_src
+
+*** Type requirements fulfillment
+
+    Given a list of values =[a1, a2, ...]= and a list of types =[t1,
+    t2, ...]=, the goal is to tell whether each =an= has the type =tn=,
+    or if =tn= is unspecified (has =null= value).
+
+    #+name: impl-method-type-req-fulfilled
+    #+begin_src javascript
+      function fulfillTypeRequirement (values, types) {
+          for (var i = 0; i < values.length; i++) {
+              var value = values[i];
+              var type = types[i];
+
+              if (type !== null && !hasType(value, type)) {
+                  return false;
+              }
+          }
+
+          return true;
+      }
+    #+end_src
+
+    With this predicate, we can now retrieve the implementation
+    corresponding to the given list of values in the implementations
+    storage
+
+    #+name: impl-method-lookup-implementation
+    #+begin_src javascript
+      function lookupImplementation (values, storage) {
+          var candidates = storage.filter(function (candidate) {
+              return fulfillTypeRequirement(values, candidate[0]);
+          });
+
+          if (candidates.length === 0) {
+              return null;
+          }
+
+          return candidates[0][1];
+      }
+    #+end_src
+
+**** TODO Multiple candidates
+
+     If there is more than one candidate, we only consider the first
+     one for now. This implementation does not suit cases where a value
+     could have multiple types, e.g. with type inheritance.
+
+*** Generic definition
+
+    All tools are built now, we can implement the generic system.
+
+    #+name: impl-method-defgeneric
+    #+begin_src javascript
+      var _slice = Array.prototype.slice;
+
+      function defgeneric () {
+          var storage = [];
+
+          var func = function () {
+              var values = _slice.call(arguments);
+              var candidate = lookupImplementation(values, storage);
+
+              if (candidate === null) {
+                  throw new Error("No implementation of generic for values " + values);
+              }
+
+              return candidate.apply(this, values);
+          };
+
+          func.defmethod = function (types, implementation) {
+              storage.push([types, implementation]);
+          };
+
+          return func;
+      }
+      exports.defgeneric = defgeneric;
+    #+end_src
+
+*** Unification
+
+    All this code is implemented in one file =method.js=
+
+    #+begin_src javascript :tangle src/method.js :noweb yes
+      /*jshint node: true */
+      "use strict";
+      var hasType = require("./core").hasType;
+
+      <<impl-method-type-req-fulfilled>>
+      <<impl-method-lookup-implementation>>
+      <<impl-method-defgeneric>>
     #+end_src
