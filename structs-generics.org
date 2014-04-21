@@ -318,9 +318,20 @@
      });
    #+end_src
 
-   Finally, we can check our instance has the expected type =Person=.
+   And adding a new property raises an error too.
 
    #+name: spec-defstruct-test5
+   #+begin_src javascript
+     it("Should throw an error when setting a non-existant property.", function () {
+         (function () {
+             john.weight = 36;
+         }).should.throw();
+     });
+   #+end_src
+
+   Finally, we can check our instance has the expected type =Person=.
+
+   #+name: spec-defstruct-test6
    #+begin_src javascript
      it("Should have struct type", function () {
          hasType(john, Person).should.be.true;
@@ -343,6 +354,7 @@
          <<spec-defstruct-test3>>
          <<spec-defstruct-test4>>
          <<spec-defstruct-test5>>
+         <<spec-defstruct-test6>>
      });
    #+end_src
 
@@ -649,7 +661,9 @@
           return {
               get prototype () { return prototype; },
               create: function (baseValues) {
-                  return createStructInstance(prototype, baseValues);
+                  var instance = createStructInstance(prototype, baseValues);
+                  Object.seal(instance);
+                  return instance;
               }
           };
       }
